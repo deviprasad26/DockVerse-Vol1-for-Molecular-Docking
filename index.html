@@ -1,0 +1,454 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DockVerse — Molecular Docking Platform</title>
+
+<!-- Google Fonts -->
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@300;400;500;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+
+<!-- External Libraries (CDN) -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://3Dmol.org/build/3Dmol-min.js"></script>
+
+<!-- DockVerse Styles -->
+<link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+
+<!-- ═══════════════════════════════════
+     NOTIFICATION TOAST
+════════════════════════════════════ -->
+<div class="notif" id="notif"></div>
+
+<!-- ═══════════════════════════════════
+     THREE.JS BACKGROUND CANVAS
+════════════════════════════════════ -->
+<canvas id="bgc"></canvas>
+
+<!-- ═══════════════════════════════════
+     DRUG 3D EXPLORER MODAL
+════════════════════════════════════ -->
+<div class="moverlay" id="moverlay">
+  <div class="mmodal">
+    <button class="mclose" onclick="closeMol()">✕</button>
+    <div class="live-badge" id="datasrc">
+      <span class="pulsedot" id="datasrc-dot"></span>
+      <span id="datasrc-txt">Loading…</span>
+    </div>
+    <div class="mtit" id="mtit">Drug Explorer</div>
+    <div class="msub" id="msub"></div>
+    <div class="mexgrid">
+
+      <!-- LEFT: 3D viewer -->
+      <div>
+        <div class="m3dw" id="m3dw">
+          <div class="m3dl" id="m3dl">Loading 3D structure…</div>
+          <div class="m3dh">🖱 Drag · Scroll zoom · Touch OK</div>
+          <div class="live-corner" id="live-corner"></div>
+        </div>
+        <div class="mctrl">
+          <button class="mc on" id="mc-bs" onclick="setMolStyle('ballstick',this)">Ball &amp; Stick</button>
+          <button class="mc" onclick="setMolStyle('stick',this)">Stick</button>
+          <button class="mc" onclick="setMolStyle('sphere',this)">Space Fill</button>
+          <button class="mc" onclick="setMolStyle('wire',this)">Wireframe</button>
+          <button class="mc" id="mc-surf" onclick="toggleSurf(this)">+ Surface</button>
+          <button class="mc" onclick="resetMolView()">⟳ Reset</button>
+        </div>
+        <div class="mlnks" id="mlnks"></div>
+      </div>
+
+      <!-- RIGHT: Properties -->
+      <div class="minfo">
+        <div class="mis">
+          <div class="mish">Molecular Properties</div>
+          <div id="mprops"></div>
+        </div>
+        <div class="mis">
+          <div class="mish">SMILES <span class="mish-note">(click to select all)</span></div>
+          <div class="smiles-box" id="msmiles"></div>
+        </div>
+        <div class="mis">
+          <div class="mish">Clinical Information</div>
+          <div id="mclini"></div>
+        </div>
+        <button class="rbtn" style="margin-top:4px;" onclick="dockFromModal()">⬡ Dock This Drug Now</button>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════
+     NAVIGATION
+════════════════════════════════════ -->
+<nav>
+  <div class="logo">Dock<span>Verse</span></div>
+  <ul>
+    <li><a href="#dock">Dock</a></li>
+    <li><a href="#fda">FDA Drugs</a></li>
+    <li><a href="#databases">Databases</a></li>
+    <li><a href="#results">Results</a></li>
+  </ul>
+  <button class="nbtn" onclick="openAI()">AI Guide ✦</button>
+</nav>
+
+<!-- ═══════════════════════════════════
+     MAIN PAGE
+════════════════════════════════════ -->
+<div class="page">
+
+  <!-- HERO -->
+  <section class="hero">
+    <div class="badge"><span class="dot"></span>Instant 3D · PubChem Live · AutoDock Vina</div>
+    <h1>Dock <span class="hl">FDA Drugs</span><br>With Precision</h1>
+    <p>Molecular docking with instant 3D visualization. Real drug structures from PubChem, real protein structures from RCSB PDB, rendered in milliseconds.</p>
+    <div class="hbtns">
+      <button class="bp" onclick="document.getElementById('dock').scrollIntoView({behavior:'smooth'})">Start Docking →</button>
+      <button class="bs" onclick="openAI()">Talk to DockyAI</button>
+    </div>
+    <div class="sbar">
+      <div class="si"><span class="sn" id="c1">0</span><span class="sl">FDA Drugs</span></div>
+      <div class="si"><span class="sn" id="c2">0</span><span class="sl">PubChem CIDs</span></div>
+      <div class="si"><span class="sn" id="c3">0</span><span class="sl">Binding Poses</span></div>
+      <div class="si"><span class="sn" id="c4">0</span><span class="sl">Databases</span></div>
+    </div>
+  </section>
+
+  <!-- BIO STRIP -->
+  <div class="bstrip"><div class="btrack" id="btrack"></div></div>
+
+  <!-- ═══════════════════════════════
+       DOCKING ENGINE SECTION
+  ════════════════════════════════ -->
+  <section id="dock">
+    <div class="sh">
+      <span class="stag">// AutoDock Vina Engine</span>
+      <h2 class="stit">Molecular Docking</h2>
+    </div>
+
+    <!-- Concept explainer -->
+    <div class="cbox">
+      <h3>🔬 How Molecular Docking Works — Receptor &amp; Ligand Explained</h3>
+      <p><strong>Receptor (Protein Target):</strong> The biological macromolecule you want your drug to bind —
+        an enzyme, kinase, or receptor. Enter its <strong>4-letter PDB ID</strong> from
+        <code>rcsb.org</code> (e.g. <code>1HVR</code> = HIV-1 protease, <code>6LU7</code> = COVID-19 Mpro).
+        Vina preprocesses the protein: removes water, adds polar hydrogens, assigns Gasteiger charges.</p>
+      <p><strong>Ligand (Drug):</strong> The small FDA-approved drug molecule docked into the receptor's
+        binding pocket. Select from the dropdown — SMILES auto-fills from PubChem. Vina exhaustively
+        searches all rotatable bond conformations inside the search box to find the lowest binding energy.</p>
+      <p><strong>Result:</strong> Binding affinity in <strong>kcal/mol</strong> — more negative = stronger binding.
+        −8 to −10 is excellent drug-target binding.</p>
+      <div class="csteps">
+        <div class="cs"><span class="cn">1</span>Enter PDB ID</div><div class="carr">→</div>
+        <div class="cs"><span class="cn">2</span>Select FDA Drug</div><div class="carr">→</div>
+        <div class="cs"><span class="cn">3</span>Set Search Box</div><div class="carr">→</div>
+        <div class="cs"><span class="cn">4</span>Run Vina</div><div class="carr">→</div>
+        <div class="cs"><span class="cn">5</span>View Results</div>
+      </div>
+    </div>
+
+    <!-- Docking form -->
+    <div class="dgrid">
+
+      <!-- RECEPTOR PANEL -->
+      <div class="dp">
+        <div class="dpt">⬡ Receptor — Protein Target</div>
+        <div class="dps">The macromolecule target. Enter a PDB ID → click Preview to load it live from RCSB PDB. This is the <em>"lock"</em>.</div>
+        <div class="fg">
+          <label>PDB ID <span class="tip" title="4-letter code from rcsb.org. Try: 1HVR, 6LU7, 2HYY, 1S19, 1AI9">?</span></label>
+          <input type="text" id="pdbid" placeholder="e.g. 1HVR, 6LU7, 2HYY …" maxlength="4" oninput="this.value=this.value.toUpperCase()">
+        </div>
+        <div class="uz" onclick="document.getElementById('pf').click()">
+          <div class="ui">🧬</div>
+          <p>Upload <span>.pdb / .mol2</span> receptor<br><small>or click to browse</small></p>
+          <input type="file" id="pf" accept=".pdb,.mol2,.cif" style="display:none" onchange="loadProteinFile(this)">
+        </div>
+        <button class="rbtn" style="margin-top:14px;background:linear-gradient(135deg,#0a2040,#1a4570);letter-spacing:1px;" onclick="previewProt()">
+          👁 Preview Protein (Live RCSB)
+        </button>
+        <div id="prot-wrap">
+          <div id="prot3d" style="width:100%;height:100%;"></div>
+          <div class="vlabel" id="prot-lbl"></div>
+        </div>
+        <div class="fg" style="margin-top:14px;">
+          <label>Binding Site</label>
+          <select>
+            <option>Auto-detect (AutoSite)</option>
+            <option>Manual XYZ</option>
+            <option>Reference ligand</option>
+            <option>Cavity prediction</option>
+          </select>
+        </div>
+        <div class="pgrid">
+          <div class="fg"><label>Center X (Å)</label><input type="number" id="cx" placeholder="0.0" step="0.1"></div>
+          <div class="fg"><label>Center Y (Å)</label><input type="number" id="cy" placeholder="0.0" step="0.1"></div>
+          <div class="fg"><label>Center Z (Å)</label><input type="number" id="cz" placeholder="0.0" step="0.1"></div>
+          <div class="fg"><label>Box Size (Å)</label><input type="number" id="bsz" value="20"></div>
+        </div>
+      </div>
+
+      <!-- LIGAND PANEL -->
+      <div class="dp">
+        <div class="dpt">◈ Ligand — FDA Drug</div>
+        <div class="dps">Select an FDA drug — instant 3D preview and properties appear immediately. SMILES confirmed live from PubChem. This is the <em>"key"</em>.</div>
+        <div class="fg">
+          <label>Select FDA Drug</label>
+          <select id="fdadd" onchange="selectDrug(this.value)">
+            <option value="">— Choose an FDA-approved drug —</option>
+            <optgroup label="Oncology">
+              <option value="imatinib">Imatinib (Gleevec)</option>
+              <option value="erlotinib">Erlotinib (Tarceva)</option>
+              <option value="sunitinib">Sunitinib (Sutent)</option>
+              <option value="venetoclax">Venetoclax (Venclexta)</option>
+              <option value="osimertinib">Osimertinib (Tagrisso)</option>
+              <option value="ribociclib">Ribociclib (Kisqali)</option>
+              <option value="vorasidenib">Vorasidenib (Voranigo)</option>
+            </optgroup>
+            <optgroup label="Antiviral">
+              <option value="oseltamivir">Oseltamivir (Tamiflu)</option>
+              <option value="remdesivir">Remdesivir (Veklury)</option>
+              <option value="nirmatrelvir">Nirmatrelvir (Paxlovid)</option>
+            </optgroup>
+            <optgroup label="Cardiology / Metabolic">
+              <option value="atorvastatin">Atorvastatin (Lipitor)</option>
+              <option value="rivaroxaban">Rivaroxaban (Xarelto)</option>
+              <option value="semaglutide">Semaglutide (Ozempic)</option>
+            </optgroup>
+            <optgroup label="Analgesic / Anti-inflammatory">
+              <option value="aspirin">Aspirin (acetylsalicylic acid)</option>
+              <option value="ibuprofen">Ibuprofen (Advil)</option>
+              <option value="celecoxib">Celecoxib (Celebrex)</option>
+            </optgroup>
+            <optgroup label="Neurology">
+              <option value="fluoxetine">Fluoxetine (Prozac)</option>
+              <option value="donepezil">Donepezil (Aricept)</option>
+            </optgroup>
+            <optgroup label="Antibiotic / Antifungal">
+              <option value="amoxicillin">Amoxicillin (Amoxil)</option>
+              <option value="ciprofloxacin">Ciprofloxacin (Cipro)</option>
+              <option value="voriconazole">Voriconazole (Vfend)</option>
+            </optgroup>
+            <optgroup label="Other">
+              <option value="metformin">Metformin (Glucophage)</option>
+              <option value="omeprazole">Omeprazole (Prilosec)</option>
+              <option value="lisinopril">Lisinopril (Zestril)</option>
+            </optgroup>
+          </select>
+        </div>
+        <!-- Quick drug preview strip -->
+        <div class="drug-strip" id="drug-strip">
+          <div class="ds-name" id="ds-name"></div>
+          <div class="ds-info" id="ds-info"></div>
+          <div class="ds-btns">
+            <button class="ds-btn" onclick="openMol(curDrugId)">🔬 3D Explorer</button>
+            <button class="ds-btn" id="ds-fda">↗ FDA Page</button>
+            <button class="ds-btn" id="ds-pub">↗ PubChem</button>
+          </div>
+        </div>
+        <div class="fg">
+          <label>SMILES <span class="tip" title="Auto-fills from PubChem when you select a drug">?</span></label>
+          <input type="text" id="smi" placeholder="Select a drug to auto-fill SMILES…">
+        </div>
+        <div class="fg">
+          <label>Algorithm</label>
+          <select>
+            <option>AutoDock Vina 1.2 (Lamarckian GA)</option>
+            <option>SwissDock (EADock DSS)</option>
+            <option>HADDOCK 2.4 (CNS)</option>
+            <option>CB-Dock2</option>
+          </select>
+        </div>
+        <div class="pgrid">
+          <div class="fg"><label>Exhaustiveness <span class="tip" title="Higher = more thorough. Default 8.">?</span></label><input type="number" id="exh" value="8" min="1" max="64"></div>
+          <div class="fg"><label>Num Poses</label><input type="number" id="np" value="9" min="1" max="20"></div>
+          <div class="fg"><label>Energy Range</label><input type="number" id="er" value="3" min="1" max="10"></div>
+          <div class="fg"><label>CPU Threads</label><input type="number" id="cpu" value="8" min="1" max="32"></div>
+        </div>
+        <button class="rbtn" onclick="runDock()">▶ Run Molecular Docking</button>
+      </div>
+
+      <!-- PROGRESS PANEL -->
+      <div class="pp" id="pp">
+        <div class="pp-title">⚡ AUTODOCK VINA — RUNNING</div>
+        <div class="pp-msg" id="pmsg">Initializing…</div>
+        <div class="pbar-w"><div class="pbar" id="pbar" style="width:0%"></div></div>
+        <div class="pchips">
+          <div class="pc" id="ps1">Prepare Receptor</div>
+          <div class="pc" id="ps2">Prepare Ligand</div>
+          <div class="pc" id="ps3">Grid Maps</div>
+          <div class="pc" id="ps4">Global Search</div>
+          <div class="pc" id="ps5">Local Opt.</div>
+          <div class="pc" id="ps6">Scoring</div>
+          <div class="pc" id="ps7">Clustering</div>
+          <div class="pc" id="ps8">Output</div>
+        </div>
+      </div>
+
+    </div><!-- /dgrid -->
+  </section>
+
+  <!-- ═══════════════════════════════
+       RESULTS SECTION
+  ════════════════════════════════ -->
+  <section id="results">
+    <div class="sh">
+      <span class="stag">// Docking Output</span>
+      <h2 class="stit">Binding Analysis</h2>
+    </div>
+    <div class="rgrid">
+
+      <!-- Score card -->
+      <div class="rc">
+        <div class="rh"><span class="rl">Best Binding Affinity</span></div>
+        <div class="score" id="rscore">— <span class="su">kcal/mol</span></div>
+        <div class="score-meta">
+          <div>Drug: <strong id="rdrug">—</strong></div>
+          <div>Target: <span id="rtgt">—</span></div>
+          <div>Algorithm: <span>AutoDock Vina 1.2</span></div>
+        </div>
+        <div class="score-grid">
+          <div class="score-box"><div class="score-val" id="rki">—</div><div class="score-label">Ki (estimated)</div></div>
+          <div class="score-box"><div class="score-val" style="color:var(--accent)">0.000 Å</div><div class="score-label">RMSD Mode 1</div></div>
+        </div>
+        <button class="exbtn" onclick="curDrugId&&openMol(curDrugId)">🔬 Explore Drug 3D</button>
+      </div>
+
+      <!-- Ligand properties -->
+      <div class="rc">
+        <div class="rh"><span class="rl">Ligand Properties</span></div>
+        <div class="prop-list">
+          <div class="prop-row"><span>Mol. Weight</span><span id="pmw" class="pval">—</span></div>
+          <div class="prop-row"><span>Formula</span><span id="pform" class="pval">—</span></div>
+          <div class="prop-row"><span>H-Bond Donors</span><span id="phbd" class="pval">—</span></div>
+          <div class="prop-row"><span>H-Bond Acceptors</span><span id="phba" class="pval">—</span></div>
+          <div class="prop-row"><span>LogP</span><span id="plogp" class="pval">—</span></div>
+          <div class="prop-row"><span>Rotatable Bonds</span><span id="prb" class="pval">—</span></div>
+          <div class="prop-row"><span>TPSA</span><span id="ptpsa" class="pval">—</span></div>
+          <div class="prop-row"><span>Lipinski Ro5</span><span id="pro5" class="pval good">—</span></div>
+        </div>
+      </div>
+
+      <!-- 3D Viewer -->
+      <div class="rc h">
+        <div class="rh">
+          <span class="rl">3D Docking Pose — Protein + Drug</span>
+          <div class="vrow-top">
+            <button class="vc on" onclick="setResStyle('cartoon',this)">Cartoon</button>
+            <button class="vc" onclick="setResStyle('stick',this)">Stick</button>
+            <button class="vc" onclick="setResStyle('sphere',this)">Sphere</button>
+            <button class="vc" onclick="curDrugId&&openMol(curDrugId)">🔬 Explore Drug</button>
+          </div>
+        </div>
+        <div id="vwrap">
+          <div id="result3d" style="width:100%;height:100%;"></div>
+          <div class="vlabel" id="vlab">Receptor + Docked Ligand</div>
+          <div class="vload" id="vload"><div class="spin"></div><p>Loading 3D structures…</p></div>
+        </div>
+      </div>
+
+      <!-- Pose table -->
+      <div class="rc">
+        <div class="rh"><span class="rl">Binding Poses — Vina Output</span></div>
+        <table class="pt">
+          <thead><tr><th>Mode</th><th>Affinity</th><th>RMSD lb</th><th>RMSD ub</th></tr></thead>
+          <tbody id="ptbody"></tbody>
+        </table>
+      </div>
+
+      <!-- Interaction map -->
+      <div class="rc w">
+        <div class="rh">
+          <span class="rl">Protein–Ligand Interaction Map</span>
+          <span style="font-size:.7rem;color:var(--dim);font-family:'Share Tech Mono',monospace;">2D pharmacophore</span>
+        </div>
+        <div class="imap"><canvas id="icvs" style="width:100%;height:100%;"></canvas></div>
+        <div class="imap-legend">
+          <div class="leg-item"><span class="leg-dot" style="background:#3b82f6;"></span>H-Bond</div>
+          <div class="leg-item"><span class="leg-dot" style="background:#f59e0b;"></span>Hydrophobic</div>
+          <div class="leg-item"><span class="leg-dot" style="background:#ef4444;"></span>π–π Stack</div>
+          <div class="leg-item"><span class="leg-dot" style="background:#10b981;"></span>Salt Bridge</div>
+        </div>
+      </div>
+
+    </div><!-- /rgrid -->
+  </section>
+
+  <!-- ═══════════════════════════════
+       FDA DRUGS SECTION
+  ════════════════════════════════ -->
+  <section id="fda">
+    <div class="sh">
+      <span class="stag">// Drugs@FDA · PubChem</span>
+      <h2 class="stit">FDA Approved Compounds</h2>
+      <p class="sh-sub">Click any card → instant 3D structure · ↗FDA = official FDA page</p>
+    </div>
+    <div class="dsearch">
+      <input id="dsrch" type="text" placeholder="Search name, brand, target, category…" oninput="filterD(this.value)">
+      <span class="si2">⌕</span>
+    </div>
+    <div class="dgr" id="dgr"></div>
+    <button class="lmore" onclick="loadMore()">Load More Drugs</button>
+  </section>
+
+  <!-- ═══════════════════════════════
+       DATABASES SECTION
+  ════════════════════════════════ -->
+  <section id="databases">
+    <div class="sh">
+      <span class="stag">// Scientific Databases</span>
+      <h2 class="stit">Data Sources &amp; Tools</h2>
+    </div>
+    <div class="dbgr" id="dbgr"></div>
+  </section>
+
+  <!-- FOOTER -->
+  <footer>
+    <div class="flogo">DockVerse</div>
+    <p>Instant 3D molecular visualization · Real FDA drug data · AutoDock Vina docking engine</p>
+    <p style="margin-top:6px;">PubChem · RCSB PDB · AlphaFold · ChEMBL · BindingDB · NCBI · ZINC · SwissDock</p>
+    <p class="footer-warn">⚠️ For research and educational purposes only — not for clinical use.</p>
+  </footer>
+
+</div><!-- /page -->
+
+<!-- ═══════════════════════════════
+     AI AGENT (DockyAI)
+════════════════════════════════ -->
+<div class="aiw" id="aiw">
+  <button class="afab" id="afab" onclick="openAI()" style="display:none">🧬</button>
+  <div class="apanel" id="apanel">
+    <div class="ahdr">
+      <div class="ainf">
+        <div class="aav">🧬</div>
+        <div><div class="aname">DockyAI</div><div class="astat">● Online</div></div>
+      </div>
+      <div class="ahbtns">
+        <button class="ahb amin" onclick="minAI()" title="Minimize">—</button>
+        <button class="ahb axc"  onclick="minAI()" title="Close">✕</button>
+      </div>
+    </div>
+    <div class="amsgs" id="amsgs"></div>
+    <div class="qas">
+      <button class="qab" onclick="qa('How do I dock a drug?')">How to dock?</button>
+      <button class="qab" onclick="qa('What PDB ID should I use?')">PDB IDs</button>
+      <button class="qab" onclick="qa('What is molecular docking?')">What is docking?</button>
+      <button class="qab" onclick="qa('Explain the results')">Results?</button>
+    </div>
+    <div class="ainr">
+      <input class="ainp" id="ainp" type="text" placeholder="Ask DockyAI…" onkeydown="if(event.key==='Enter')send()">
+      <button class="asnd" onclick="send()">➤</button>
+    </div>
+    <div class="adbar">
+      <span>Done with DockyAI?</span>
+      <button class="adbtn" onclick="dismissAI()">✕ Dismiss</button>
+    </div>
+  </div>
+</div>
+
+<!-- DockVerse JavaScript -->
+<script src="js/main.js"></script>
+
+</body>
+</html>
