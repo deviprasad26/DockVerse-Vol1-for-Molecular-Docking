@@ -27,44 +27,6 @@ dockverse/
 ```
 
 ---
-
-## 🚀 How to Deploy on GitHub Pages
-
-### Step 1 — Create a GitHub repository
-1. Go to [github.com](https://github.com) → **New repository**
-2. Name it `dockverse` (or anything you like)
-3. Set it to **Public**
-4. Click **Create repository**
-
-### Step 2 — Upload your files
-**Option A — Upload via browser:**
-1. Click **uploading an existing file**
-2. Drag all files and folders (`index.html`, `css/`, `js/`, `README.md`)
-3. Click **Commit changes**
-
-**Option B — Via Git (command line):**
-```bash
-git init
-git add .
-git commit -m "Initial commit — DockVerse"
-git branch -M main
-git remote add origin https://github.com/YOUR_USERNAME/dockverse.git
-git push -u origin main
-```
-
-### Step 3 — Enable GitHub Pages
-1. Go to your repository → **Settings**
-2. Scroll to **Pages** (left sidebar)
-3. Under **Source** → select **Deploy from a branch**
-4. Branch: **main** · Folder: **/ (root)**
-5. Click **Save**
-
-### Step 4 — Your site is live!
-```
-https://YOUR_USERNAME.github.io/dockverse
-```
-*(Takes ~1-2 minutes to go live after first deploy)*
-
 ---
 
 ## ✏️ How to Edit
